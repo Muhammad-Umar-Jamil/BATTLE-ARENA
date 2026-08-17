@@ -7,7 +7,7 @@ def login():
     with st.form("login_form"):
         username = st.text_input("TEAM ID / CALLSIGN", key="login_username")
         password = st.text_input("ACCESS CODE", type="password", key="login_password")
-        submitted = st.form_submit_button("INITIATE ACCESS", use_container_width=True)
+        submitted = st.form_submit_button("INITIATE ACCESS", width='stretch')
         
         if submitted:
             if not username or not password:
@@ -23,6 +23,7 @@ def login():
                 st.session_state['is_admin'] = user['is_admin']
                 st.session_state['is_approved'] = user['is_approved']
                 st.session_state['has_broken_guardrail'] = user['has_broken_guardrail']
+                st.session_state['broken_guardrails'] = set()
                 st.success("Access Granted! Welcome back.")
                 st.rerun()
             else:
@@ -55,7 +56,7 @@ def signup():
                 university = st.text_input("University Name")
                 roll_no = st.text_input("University Roll No.")
             
-        submitted = st.form_submit_button("TRANSMIT REGISTRATION", use_container_width=True)
+        submitted = st.form_submit_button("TRANSMIT REGISTRATION", width='stretch')
         
         if submitted:
             # Check basic required fields for everyone

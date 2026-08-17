@@ -53,7 +53,7 @@ def admin_panel():
                     tokens = st.slider("Max Tokens", 128, 4096, int(g_data.get('max_tokens', 512)), 64)
                     rp = st.slider("Repetition Penalty", 0.0, 2.0, float(g_data.get('rep_pen', 1.0)), 0.1)
                 
-                if st.form_submit_button(f"Deploy Settings for Guardrail {gid}", use_container_width=True):
+                if st.form_submit_button(f"Deploy Settings for Guardrail {gid}", width='stretch'):
                     db.update_guardrail_settings(gid, m_name, s_prompt, f_word, temp, tokens, tp, rp)
                     st.success(f"Global Settings for Guardrail {gid} successfully deployed!")
 
@@ -79,12 +79,12 @@ def admin_panel():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button(f"✅ Approve", key=f"approve_{u['id']}", type="primary", use_container_width=True):
+                    if st.button(f"✅ Approve", key=f"approve_{u['id']}", type="primary", width='stretch'):
                         db.approve_user(u['id'])
                         st.success(f"{u['username']} has been approved!")
                         st.rerun()
                 with col2:
-                    if st.button(f"❌ Reject & Delete", key=f"reject_{u['id']}", use_container_width=True):
+                    if st.button(f"❌ Reject & Delete", key=f"reject_{u['id']}", width='stretch'):
                         db.delete_user(u['id'])
                         st.error(f"{u['username']} rejected and deleted.")
                         st.rerun()
@@ -104,7 +104,7 @@ def admin_panel():
                 "Status": "✅ Approved" if u['is_approved'] else "⏳ Pending",
                 "Winner": "🏆 Yes" if u['has_broken_guardrail'] else "❌ No"
             })
-        st.dataframe(clean_users, use_container_width=True)
+        st.dataframe(clean_users, width='stretch')
     else:
         st.info("No users found.")
 
