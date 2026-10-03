@@ -31,7 +31,7 @@ function LoginPage() {
     setSubmitting(true)
     const result = await signIn(email.trim(), password)
     setSubmitting(false)
-    if (result.error) { console.error('Supabase sign-in error', result.error); return setError('Login failed: ' + result.error.message) }
+    if (result.error) return setError('Invalid email or password.')
     toast.success('Signed in successfully.')
     const destination = profile?.is_admin ? '/admin' : '/'
     navigate(destination)
@@ -68,6 +68,7 @@ function ArenaPage() {
 function AdminPage() { const { profile } = useAuth(); if (!profile?.is_admin) return <Navigate to="/" replace />; return <main className="arena-shell"><section className="admin-placeholder"><p className="label accent-label">ADMIN CONTROL</p><h1 className="display-font">Provider settings.</h1><p className="muted">Primary and fallback provider settings will be connected in a later phase. No provider keys are configured.</p></section></main> }
 function AppRoutes() { return <Routes><Route path="/login" element={<LoginPage />} /><Route path="/" element={<ProtectedRoute><ArenaPage /></ProtectedRoute>} /><Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes> }
 export default function App() { return <AuthProvider><AppRoutes /></AuthProvider> }
+
 
 
 
