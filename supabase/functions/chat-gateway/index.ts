@@ -11,9 +11,10 @@ Deno.serve(async (req) => {
   if (!authHeader?.startsWith('Bearer ')) return json({ error: 'UNAUTHORIZED' }, 401)
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  const client = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } })
+  const userClient = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } })
+  const client = createClient(supabaseUrl, serviceKey)
   const token = authHeader.slice('Bearer '.length)
-  const { data: authData, error: authError } = await client.auth.getUser(token)
+  const { data: authData, error: authError } = await userClient.auth.getUser(token)
   if (authError || !authData.user) return json({ error: 'UNAUTHORIZED' }, 401)
   let body: ChatBody
   try { body = await req.json() } catch { return json({ error: 'INVALID_JSON' }, 400) }

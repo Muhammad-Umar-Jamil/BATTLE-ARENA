@@ -1,0 +1,36 @@
+import { test, expect, assignSecrets, createTeam, loginTeam, startEvent, logoutTeam } from './fixtures'
+
+test('SCORE-001/011/012 and GUESS-015/016: accepted guess persists after refresh and logout', async ({ adminPage, browser }) => {
+  const team = await createTeam(adminPage, 'Score')
+  await assignSecrets(adminPage, team.username)
+  await startEvent(adminPage)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await loginTeam(page, team)
+  const secret = process.env.E2E_TEAM_SECRET_EASY
+  if (!secret) throw new Error('E2E_TEAM_SECRET_EASY is required.')
+  await page.getByTestId('guess-input').fill(secret)
+  await page.getByTestId('guess-submit').click()
+  await expect(page.getByTestId('guess-result')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('guess-status-1')).toHaveText('GUESS USED')
+  await logoutTeam(page)
+  await loginTeam(page, team)
+  await expect(page.getByTestId('guess-status-1')).toHaveText('GUESS USED')
+  await context.close()
+})
+
+test('SCORE-004/007/019: wrong answer consumes only its difficulty', async ({ adminPage, browser }) => {
+  const team = await createTeam(adminPage, 'Wrong')
+  await assignSecrets(adminPage, team.username)
+  await startEvent(adminPage)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await loginTeam(page, team)
+  await page.getByTestId('guess-input').fill('definitely-not-the-secret')
+  await page.getByTestId('guess-submit').click()
+  await expect(page.getByTestId('guess-status-1')).toHaveText('GUESS USED')
+  await page.getByTestId('difficulty-2').click()
+  await expect(page.getByTestId('guess-status-2')).toHaveText('1 GUESS REMAINING')
+  await context.close()
+})

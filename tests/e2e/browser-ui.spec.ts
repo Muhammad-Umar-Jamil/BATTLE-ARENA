@@ -1,0 +1,30 @@
+import { test, expect, createTeam, assignSecrets, startEvent, loginTeam } from './fixtures'
+
+test('BROWSER-001/002/003/004: fullscreen recovery and logout controls render', async ({ adminPage, browser }) => {
+  const team = await createTeam(adminPage, 'Fullscreen')
+  await assignSecrets(adminPage, team.username)
+  await startEvent(adminPage)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await loginTeam(page, team)
+  await page.evaluate(() => document.dispatchEvent(new Event('fullscreenchange')))
+  await expect(page.getByTestId('logout-button')).toBeVisible()
+  await context.close()
+})
+
+test('BROWSER-009/010/011/012: responsive pages render without application errors', async ({ adminPage, browser }) => {
+  const errors: string[] = []
+  adminPage.on('pageerror', (error) => errors.push(error.message))
+  await adminPage.setViewportSize({ width: 390, height: 844 })
+  await adminPage.getByTestId('admin-tab-event').click()
+  await expect(adminPage.getByTestId('admin-event-panel')).toBeVisible()
+  expect(errors).toEqual([])
+  const team = await createTeam(adminPage, 'Responsive')
+  await assignSecrets(adminPage, team.username)
+  await startEvent(adminPage)
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const page = await context.newPage()
+  await loginTeam(page, team)
+  await expect(page.getByTestId('arena-page')).toBeVisible()
+  await context.close()
+})
