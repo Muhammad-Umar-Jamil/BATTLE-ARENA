@@ -7,12 +7,13 @@ export type Profile = { id: string; username: string; total_score: number; is_ad
 type AuthResult = { error: Error | null }
 type AuthValue = { user: User | null; session: Session | null; profile: Profile | null; loading: boolean; signIn: (email: string, password: string) => Promise<AuthResult>; signOut: () => Promise<AuthResult> }
 const AuthContext = createContext<AuthValue | undefined>(undefined)
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function loadProfile(userId: string) {
+  async function fetchProfile(userId: string) {
     const { data, error } = await supabase.from('profiles').select('id, username, total_score, is_admin').eq('id', userId).maybeSingle()
     if (error) { setProfile(null); return null }
     const nextProfile = data as Profile | null
@@ -23,23 +24,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!supabaseConfigured) { setLoading(false); return }
     let active = true
-    void supabase.auth.getSession().then(async ({ data }) => {
+    void supabase.auth.getSession().then(({ data }) => {
       if (!active) return
       setSession(data.session)
-      if (data.session?.user) await loadProfile(data.session.user.id)
-      setLoading(false)
+      if (!data.session) setLoading(false)
     })
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void (async () => {
-        setLoading(true)
-        setSession(nextSession)
-        if (nextSession?.user) await loadProfile(nextSession.user.id)
-        else setProfile(null)
-        setLoading(false)
-      })()
+      setSession(nextSession)
+      if (!nextSession) { setProfile(null); setLoading(false) }
     })
     return () => { active = false; listener.subscription.unsubscribe() }
   }, [])
+
+  useEffect(() => {
+    if (!session?.user) return
+    let active = true
+    setLoading(true)
+    void fetchProfile(session.user.id).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [session?.user.id])
 
   const value = useMemo<AuthValue>(() => ({
     user: session?.user ?? null,
@@ -49,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn: async (email, password) => {
       if (!supabaseConfigured) return { error: new Error('Supabase is not configured.') }
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (!error && data.user) { setSession(data.session); await loadProfile(data.user.id); setLoading(false) }
+      if (!error && data.session) setSession(data.session)
       return { error }
     },
     signOut: async () => {
@@ -58,7 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error }
     },
   }), [loading, profile, session])
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
-export function useAuth() { const context = useContext(AuthContext); if (!context) throw new Error('useAuth must be used inside AuthProvider'); return context }
 
+export function useAuth() { const context = useContext(AuthContext); if (!context) throw new Error('useAuth must be used inside AuthProvider'); return context }
