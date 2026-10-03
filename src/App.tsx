@@ -31,7 +31,7 @@ function LoginPage() {
     setSubmitting(true)
     const result = await signIn(email.trim(), password)
     setSubmitting(false)
-    if (result.error) { console.error('Supabase sign-in error', result.error); return setError(Login failed: ) }
+    if (result.error) { console.error('Supabase sign-in error', result.error); return setError('Login failed: ' + result.error.message) }
     toast.success('Signed in successfully.')
     const destination = profile?.is_admin ? '/admin' : '/'
     navigate(destination)
