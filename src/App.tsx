@@ -31,7 +31,7 @@ function LoginPage() {
     setSubmitting(true)
     const result = await signIn(email.trim(), password)
     setSubmitting(false)
-    if (result.error) return setError('Invalid email or password.')
+    if (result.error) return setError(result.error.message.includes('another browser') ? result.error.message : 'Invalid email or password.')
     toast.success('Signed in successfully.')
     const destination = result.profile?.is_admin ? '/admin' : '/'
     navigate(destination)
