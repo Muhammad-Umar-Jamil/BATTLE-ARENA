@@ -1,8 +1,40 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 type ChatBody = { level_id?: number; prompt?: string }
-const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
+const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
+const streamHeaders = { ...cors, 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' }
+const encoder = new TextEncoder()
+
+function providerText(payload: any) {
+  return payload?.choices?.[0]?.delta?.content ?? payload?.choices?.[0]?.message?.content ?? ''
+}
+
+async function readProvider(response: Response, emit: (event: unknown) => void) {
+  const contentType = response.headers.get('content-type') ?? ''
+  let answer = ''
+  if (contentType.includes('text/event-stream') && response.body) {
+    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+    const consume = (line: string) => {
+      const value = line.trim()
+      if (!value.startsWith('data:')) return
+      const data = value.slice(5).trim()
+      if (!data || data === '[DONE]') return
+      try { const text = String(providerText(JSON.parse(data))); if (text) { answer += text; emit({ type: 'chunk', content: text }) } } catch { /* ignore keep-alive or malformed provider lines */ }
+    }
+    while (true) {
+      const next = await reader.read(); if (next.done) break
+      buffer += decoder.decode(next.value, { stream: true })
+      const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
+      for (const line of lines) consume(line)
+    }
+    consume(buffer)
+  } else {
+    const payload = await response.json(); const text = String(providerText(payload))
+    if (text) { answer = text; emit({ type: 'chunk', content: text }) }
+  }
+  return answer
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -40,16 +72,28 @@ Deno.serve(async (req) => {
     { endpoint: guardrail.primary_endpoint, key: guardrail.primary_api_key },
     { endpoint: guardrail.secondary_endpoint, key: guardrail.secondary_api_key },
   ].filter((provider) => provider.endpoint && provider.key)
-  let answer = ''
-  let fallbackUsed = false
-  for (const [index, provider] of providers.entries()) {
-    const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), guardrail.timeout_seconds * 1000)
-    try {
-      const response = await fetch(`${String(provider.endpoint).replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provider.key}` }, body: JSON.stringify({ model: guardrail.model_name, messages, temperature: guardrail.temperature, max_tokens: guardrail.max_tokens }) })
-      if (response.ok) { const result = await response.json(); answer = result?.choices?.[0]?.message?.content ?? ''; if (answer) { fallbackUsed = index > 0; break } }
-    } catch { /* try fallback */ } finally { clearTimeout(timeout) }
-  }
-  if (!answer) return json({ error: 'PROVIDER_UNAVAILABLE' }, 502)
-  await client.from('chat_messages').insert([{ user_id: authData.user.id, level_id: levelId, role: 'user', content: prompt }, { user_id: authData.user.id, level_id: levelId, role: 'assistant', content: answer }])
-  return json({ answer, fallback_used: fallbackUsed })
+  const stream = new ReadableStream({
+    start(controller) {
+      const emit = (event: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
+      void (async () => {
+        let answer = ''
+        let fallbackUsed = false
+        for (const [index, provider] of providers.entries()) {
+          const requestController = new AbortController(); const timeout = setTimeout(() => requestController.abort(), guardrail.timeout_seconds * 1000)
+          try {
+            const response = await fetch(`${String(provider.endpoint).replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal: requestController.signal, headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json', Authorization: `Bearer ${provider.key}` }, body: JSON.stringify({ model: guardrail.model_name, messages, temperature: guardrail.temperature, max_tokens: guardrail.max_tokens, stream: true }) })
+            if (response.ok) {
+              emit({ type: 'meta', stream_delay_ms: guardrail.stream_delay_ms, fallback_used: index > 0 })
+              answer = await readProvider(response, emit)
+              if (answer) { fallbackUsed = index > 0; break }
+            }
+          } catch { /* try fallback */ } finally { clearTimeout(timeout) }
+        }
+        if (!answer) { emit({ type: 'error', error: 'PROVIDER_UNAVAILABLE' }); controller.close(); return }
+        await client.from('chat_messages').insert([{ user_id: authData.user.id, level_id: levelId, role: 'user', content: prompt }, { user_id: authData.user.id, level_id: levelId, role: 'assistant', content: answer }])
+        emit({ type: 'done', fallback_used: fallbackUsed }); controller.close()
+      })().catch(() => { emit({ type: 'error', error: 'PROVIDER_UNAVAILABLE' }); controller.close() })
+    },
+  })
+  return new Response(stream, { headers: streamHeaders })
 })

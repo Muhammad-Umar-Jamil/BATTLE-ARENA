@@ -7,6 +7,8 @@ import { supabase } from './lib/supabase'
 import { validateGuardrail, type Guardrail, type GuardrailDraft } from './lib/guardrails'
 import { guessLabel, isGuessUsable } from './lib/guess-policy'
 import { functionErrorMessage } from './lib/function-error'
+import { parseChatStreamLine } from './lib/chat-stream'
+import { functionUrl, supabaseAnonKey } from './lib/supabase'
 import './App.css'
 
 function LoadingScreen() {
@@ -73,7 +75,26 @@ function ArenaPage() {
   useEffect(() => { const load = () => void supabase.rpc('public_leaderboard').then(({ data }) => setLeaders((data ?? []) as { rank: number; username: string; total_score: number }[])); load(); const timer = window.setInterval(load, 15000); return () => window.clearInterval(timer) }, [])
   useEffect(() => { void supabase.rpc('get_participant_event').then(({ data }) => setEventEnd((data?.[0] as { end_time: string | null } | undefined)?.end_time ?? null)); const onFull = () => setFullscreenRequired(Boolean(document.fullscreenEnabled && !document.fullscreenElement)); const onKey = (event: KeyboardEvent) => { const key = event.key.toLowerCase(); if (event.key === 'F12' || (event.ctrlKey && ['i','j','u','s','p'].includes(key)) || (event.ctrlKey && event.shiftKey && key === 'c')) { event.preventDefault(); toast.error('Developer tools are disabled during the competition.') } }; const onContext = (event: MouseEvent) => { event.preventDefault(); toast.error('Context menu is disabled during the competition.') }; document.addEventListener('fullscreenchange', onFull); document.addEventListener('keydown', onKey); document.addEventListener('contextmenu', onContext); return () => { document.removeEventListener('fullscreenchange', onFull); document.removeEventListener('keydown', onKey); document.removeEventListener('contextmenu', onContext) } }, [])
   useEffect(() => { if (!eventEnd) return; const timer = window.setInterval(() => { setClock(Date.now()); if (new Date(eventEnd).getTime() <= Date.now()) { toast.error('Event Over!'); void signOut(); navigate('/login') } }, 1000); return () => window.clearInterval(timer) }, [eventEnd, navigate, signOut])
-  async function attack(event: FormEvent) { event.preventDefault(); if (!prompt.trim() || busy) return; setBusy(true); setError(''); const current = prompt.trim(); setPrompt(''); const { data, error: invokeError } = await supabase.functions.invoke('chat-gateway', { body: { level_id: level, prompt: current } }); if (invokeError || data?.error) setError(await functionErrorMessage(invokeError, data, 'The warden could not answer.')); else { const response = String(data.answer); setMessages((items) => [...items, { role: 'user', content: current }]); let built = ''; for (const word of response.split(/(\s+)/)) { built += word; setMessages((items) => [...items.filter((item) => item.role !== 'assistant' || item.content !== built.slice(0, -word.length)), { role: 'assistant', content: built }]); await new Promise((resolve) => setTimeout(resolve, 35)) } } setBusy(false) }
+  async function attack(event: FormEvent) {
+    event.preventDefault(); if (!prompt.trim() || busy || !session?.access_token || !supabaseAnonKey) return
+    setBusy(true); setError(''); const current = prompt.trim(); setPrompt('')
+    setMessages((items) => [...items, { role: 'user', content: current }, { role: 'assistant', content: '' }])
+    try {
+      const response = await fetch(functionUrl('chat-gateway'), { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, apikey: supabaseAnonKey, 'Content-Type': 'application/json', Accept: 'application/x-ndjson' }, body: JSON.stringify({ level_id: level, prompt: current }) })
+      if (!response.ok || !response.body) { let data: unknown = null; try { data = await response.json() } catch { /* no JSON body */ }; setError(await functionErrorMessage({ context: { json: async () => data } }, data, 'The warden could not answer.')); setMessages((items) => items.at(-1)?.role === 'assistant' ? items.slice(0, -1) : items); return }
+      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let delay = 35
+      const append = async (text: string) => { for (const character of text) { setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, content: item.content + character } : item)); if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay)) } }
+      while (true) {
+        const next = await reader.read(); if (next.done) break
+        buffer += decoder.decode(next.value, { stream: true }); const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
+        for (const line of lines) { const eventData = parseChatStreamLine(line); if (!eventData) continue; if (eventData.type === 'meta') delay = eventData.stream_delay_ms; else if (eventData.type === 'chunk') await append(eventData.content); else if (eventData.type === 'error') throw new Error(eventData.error) }
+      }
+      const last = parseChatStreamLine(buffer); if (last?.type === 'chunk') await append(last.content); else if (last?.type === 'error') throw new Error(last.error)
+    } catch (streamError) {
+      setMessages((items) => items.at(-1)?.role === 'assistant' && !items.at(-1)?.content ? items.slice(0, -1) : items)
+      setError(streamError instanceof Error && streamError.message !== 'PROVIDER_UNAVAILABLE' ? streamError.message : 'The warden could not answer.')
+    } finally { setBusy(false) }
+  }
   async function clearHistory() { await supabase.rpc('clear_chat_history', { p_level_id: level }); setMessages([]) }
   async function submitGuess(event: FormEvent) { event.preventDefault(); if (!isGuessUsable(guessUsed, level, guess, Boolean(session))) return; setError(''); const { data, error: submitError } = await supabase.functions.invoke('evaluate', { body: { level_id: level, submitted_word: guess.trim() } }); if (submitError || data?.error) { const { data: currentAttempts } = await supabase.rpc('list_submissions', { p_level_id: level }); if ((currentAttempts ?? []).length > 0) setGuessUsed((current) => ({ ...current, [level]: true })); setError(await functionErrorMessage(submitError, data, 'Unable to score guess.')); return } setGuessUsed((current) => ({ ...current, [level]: true })); setResult(data); if (typeof data?.total_score === 'number') setScore(data.total_score); setGuess('') }
   const remaining = eventEnd ? Math.max(0, Math.floor((new Date(eventEnd).getTime() - clock) / 1000)) : 0
