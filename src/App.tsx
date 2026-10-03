@@ -99,7 +99,7 @@ function ArenaPage() {
           if (visible.length >= completeText.length) { streamingTimerRef.current = null; resolve(); return }
           visible += completeText[visible.length]
           setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, content: visible } : item))
-          streamingTimerRef.current = window.setTimeout(step, Math.max(0, delay))
+          streamingTimerRef.current = window.setTimeout(step, Math.max(10, Math.min(2000, delay)))
         }
         step()
       })
