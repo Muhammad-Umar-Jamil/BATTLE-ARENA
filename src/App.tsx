@@ -8,6 +8,7 @@ import { validateGuardrail, type Guardrail, type GuardrailDraft } from './lib/gu
 import { guessLabel, isGuessUsable } from './lib/guess-policy'
 import { functionErrorMessage } from './lib/function-error'
 import { parseChatStreamLine } from './lib/chat-stream'
+import { createCharacterPacer } from './lib/character-pacer'
 import './App.css'
 
 function LoadingScreen() {
@@ -68,7 +69,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function ArenaPage() {
   const { profile, session, signOut } = useAuth(); const navigate = useNavigate()
-  const [level, setLevel] = useState(1); const [prompt, setPrompt] = useState(''); const [messages, setMessages] = useState<{ role: string; content: string }[]>([]); const [busy, setBusy] = useState(false); const [thinkingMessageIndex, setThinkingMessageIndex] = useState(0); const [error, setError] = useState(''); const [guess, setGuess] = useState(''); const [result, setResult] = useState<{ similarity_score: number; awarded_points: number; is_new_best: boolean; total_score?: number } | null>(null); const [guessUsed, setGuessUsed] = useState<Record<number, boolean>>({}); const [score, setScore] = useState(0); const [eventEnd, setEventEnd] = useState<string | null>(null); const [clock, setClock] = useState(Date.now()); const [fullscreenRequired, setFullscreenRequired] = useState(false); const [leaders, setLeaders] = useState<{ rank: number; username: string; total_score: number }[]>([])
+  const [level, setLevel] = useState(1); const [prompt, setPrompt] = useState(''); const [messages, setMessages] = useState<{ role: string; content: string }[]>([]); const [busy, setBusy] = useState(false); const [thinkingMessageIndex, setThinkingMessageIndex] = useState(0); const [error, setError] = useState(''); const [guess, setGuess] = useState(''); const [result, setResult] = useState<{ similarity_score: number; awarded_points: number; base_points?: number; time_bonus?: number; time_left_minutes?: number; is_new_best: boolean; total_score?: number } | null>(null); const [guessUsed, setGuessUsed] = useState<Record<number, boolean>>({}); const [score, setScore] = useState(0); const [eventEnd, setEventEnd] = useState<string | null>(null); const [clock, setClock] = useState(Date.now()); const [fullscreenRequired, setFullscreenRequired] = useState(false); const [leaders, setLeaders] = useState<{ rank: number; username: string; total_score: number }[]>([])
   const thinkingMessages = ['Warden is tuning the signal…', 'Searching the clue lattice…', 'Cross-checking the hidden trail…', 'Assembling a useful hint…', 'The arena is thinking three moves ahead…', 'Almost ready — keep your eyes on the signal…']
   useEffect(() => { void supabase.rpc('list_chat_messages', { p_level_id: level }).then(({ data }) => setMessages((data ?? []) as { role: string; content: string }[])); void supabase.rpc('list_submissions', { p_level_id: level }).then(({ data }) => { const submission = (data ?? [])[0] as { similarity_score: number; awarded_points: number } | undefined; setGuessUsed((current) => ({ ...current, [level]: Boolean(submission) })); setResult(submission ? { ...submission, is_new_best: true } : null) }) }, [level])
   useEffect(() => { setScore(profile?.total_score ?? 0) }, [profile?.total_score])
@@ -83,16 +84,15 @@ function ArenaPage() {
     try {
       const response = await fetch(functionUrl('chat-gateway'), { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, apikey: supabaseAnonKey, 'Content-Type': 'application/json', Accept: 'application/x-ndjson' }, body: JSON.stringify({ level_id: level, prompt: current }) })
       if (!response.ok || !response.body) { let data: unknown = null; try { data = await response.json() } catch { /* no JSON body */ }; setError(await functionErrorMessage({ context: { json: async () => data } }, data, 'The warden could not answer.')); setMessages((items) => items.at(-1)?.role === 'assistant' ? items.slice(0, -1) : items); return }
-      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let delay = 35; let pending = ''; let draining = false; let drainResolve: (() => void) | null = null
-      const drain = async () => { if (draining) return; draining = true; while (pending.length > 0) { const character = pending[0]; pending = pending.slice(1); setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, content: item.content + character } : item)); if (pending.length > 0 && delay > 0) await new Promise((resolve) => setTimeout(resolve, delay)) }; draining = false; drainResolve?.(); drainResolve = null }
-      const append = (text: string) => { pending += text; void drain() }
+      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let delay = 35
+      const pacer = createCharacterPacer(delay, (character) => setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, content: item.content + character } : item)))
       while (true) {
         const next = await reader.read(); if (next.done) break
         buffer += decoder.decode(next.value, { stream: true }); const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
-        for (const line of lines) { const eventData = parseChatStreamLine(line); if (!eventData) continue; if (eventData.type === 'meta') delay = eventData.stream_delay_ms; else if (eventData.type === 'chunk') append(eventData.content); else if (eventData.type === 'error') throw new Error(eventData.error) }
+        for (const line of lines) { const eventData = parseChatStreamLine(line); if (!eventData) continue; if (eventData.type === 'meta') { delay = eventData.stream_delay_ms; pacer.setGap(delay); } else if (eventData.type === 'chunk') pacer.enqueue(eventData.content); else if (eventData.type === 'error') throw new Error(eventData.error) }
       }
-      const last = parseChatStreamLine(buffer); if (last?.type === 'chunk') append(last.content); else if (last?.type === 'error') throw new Error(last.error)
-      if (pending.length > 0 || draining) await new Promise<void>((resolve) => { drainResolve = resolve; void drain() })
+      const last = parseChatStreamLine(buffer); if (last?.type === 'chunk') pacer.enqueue(last.content); else if (last?.type === 'error') throw new Error(last.error)
+      await pacer.finish()
     } catch (streamError) {
       setMessages((items) => items.at(-1)?.role === 'assistant' && !items.at(-1)?.content ? items.slice(0, -1) : items)
       setError(streamError instanceof Error && streamError.message !== 'PROVIDER_UNAVAILABLE' ? streamError.message : 'The warden could not answer.')

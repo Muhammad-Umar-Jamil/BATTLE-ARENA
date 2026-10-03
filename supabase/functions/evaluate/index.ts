@@ -14,10 +14,10 @@ Deno.serve(async (req) => {
  const {data:existing,error:existingError}=await client.from('submissions').select('id').eq('user_id',who.user.id).eq('level_id',levelId).maybeSingle();
  if(existingError)return json({error:'SCORING_UNAVAILABLE'},503)
  if(existing)return json({error:'GUESS_ALREADY_USED',message:'You have already used your guess for this difficulty.'},409)
- const score=similarity(secret.target_secret,word),points=Math.round(score/100*guardrail.max_points); const {data:result,error}=await client.rpc('record_submission_for_user',{p_user_id:who.user.id,p_level_id:levelId,p_submitted_word:word,p_similarity_score:score,p_awarded_points:points});
+ const score=similarity(secret.target_secret,word), timeLeftMinutes=Math.max(0, event?.end_time ? (new Date(event.end_time).getTime()-Date.now())/60000 : 0), basePoints=Math.round(score/100*guardrail.max_points), timeBonus=Math.round(0.2*timeLeftMinutes*basePoints), points=basePoints+timeBonus; const {data:result,error}=await client.rpc('record_submission_for_user',{p_user_id:who.user.id,p_level_id:levelId,p_submitted_word:word,p_similarity_score:score,p_awarded_points:points});
  if(error){
    if(error.code==='23505'||error.message?.includes('GUESS_ALREADY_USED')) return json({error:'GUESS_ALREADY_USED',message:'You have already used your guess for this difficulty.'},409)
    return json({error:'SCORING_FAILED'},500)
  }
- return json(result?.[0]??result)
+ const recorded=result?.[0]??result; return json({ ...recorded, base_points:basePoints, time_bonus:timeBonus, time_left_minutes:timeLeftMinutes })
 })
