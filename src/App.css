@@ -20,6 +20,20 @@
 .admin-heading h1 { font-size: clamp(58px, 8vw, 96px); line-height: .85; margin: 10px 0 14px; }
 .admin-badge { border: 1px solid var(--line); color: var(--yellow); border-radius: 999px; padding: 9px 13px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 .admin-error { margin-bottom: 18px; }
+.admin-control-card { margin: 18px 0; padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.admin-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.admin-card-heading h2 { font-size: 42px; line-height: .9; margin: 8px 0 0; }
+.status-pill { border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; color: var(--muted); font-size: 10px; letter-spacing: .12em; }
+.status-pill.running { color: var(--yellow); border-color: #f4d00066; }
+.event-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.event-actions label { width: 180px; }
+.team-table, .secret-table { display: grid; gap: 8px; }
+.team-row, .secret-row { display: grid; grid-template-columns: minmax(120px, 1fr) 120px 100px auto; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.team-row span { color: var(--muted); font-size: 11px; }
+.team-row span:first-of-type { color: var(--yellow); }
+.secret-row { grid-template-columns: 180px minmax(0, 1fr) auto; }
+.secret-row input { padding: 10px 12px; }
+.admin-section-title { margin: 34px 0 12px; }
 .guardrail-list { display: grid; gap: 12px; }
 .guardrail-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .guardrail-card.open { border-color: #a855f766; }
@@ -35,6 +49,7 @@
 input[type="range"] { accent-color: var(--yellow); padding: 8px 0; }
 .guardrail-actions { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 22px; }
 @media (max-width: 700px) { .admin-content { width: min(100% - 28px, 1080px); padding-top: 34px; } .admin-heading { align-items: start; flex-direction: column; } .settings-grid { grid-template-columns: 1fr; } .guardrail-actions { align-items: stretch; flex-direction: column; } }
+@media (max-width: 700px) { .team-row, .secret-row { grid-template-columns: 1fr; } .event-actions { align-items: stretch; flex-direction: column; } .event-actions label { width: auto; } }
 @media (max-width: 980px) { .login-gate { grid-template-columns: 1fr; margin-top: 5vh; } .login-art { min-height: 360px; } .arena-grid { grid-template-columns: 1fr; } .arena-rail, .arena-panel { border: 0; border-bottom: 1px solid var(--line); } .arena-center { min-height: 500px; } }
 @media (max-width: 600px) { .login-screen { padding: 20px; } .arena-nav .label { display: none; } .login-art, .login-form-panel { padding: 30px 24px; } .login-art h1 { font-size: 70px; } .login-facts { gap: 18px; } .login-facts div { padding-right: 18px; } .arena-header { padding: 14px; } .arena-header .arena-logo { font-size: 21px; } .timer strong { font-size: 38px; } .score strong { font-size: 32px; } .composer, .section-heading { padding-left: 18px; padding-right: 18px; } }
 

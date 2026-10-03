@@ -22,6 +22,8 @@ async function acquireSession() {
   if (error) return new Error('Unable to acquire a competition session.')
   if (data !== 'OK') {
     if (data === 'LOCKED') return new Error('Account already active in another browser. Try again after 31 seconds.')
+    if (data === 'DISABLED') return new Error('Logins are currently disabled by the administrator.')
+    if (data === 'EVENT_NOT_STARTED') return new Error('The event is not currently running.')
     return new Error('This account cannot start a session right now.')
   }
   return null

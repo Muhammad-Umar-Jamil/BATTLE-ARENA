@@ -33,7 +33,7 @@ function LoginPage() {
     setSubmitting(true)
     const result = await signIn(email.trim(), password)
     setSubmitting(false)
-    if (result.error) return setError(result.error.message.includes('another browser') ? result.error.message : 'Invalid email or password.')
+    if (result.error) return setError(result.error.message.includes('another browser') || result.error.message.includes('Logins') || result.error.message.includes('event') ? result.error.message : 'Invalid email or password.')
     toast.success('Signed in successfully.')
     const destination = result.profile?.is_admin ? '/admin' : '/'
     navigate(destination)
@@ -71,6 +71,10 @@ function toDraft(row: Guardrail): GuardrailDraft {
   return { ...row, primary_api_key: '', secondary_api_key: '' }
 }
 
+type EventSettings = { status: string; logins_disabled: boolean; start_time: string | null; end_time: string | null }
+type TeamRow = { id: string; username: string; total_score: number; last_heartbeat: string | null; is_active: boolean }
+type SecretRow = { user_id: string; username: string; level_id: number; target_secret: string }
+
 function AdminPage() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
@@ -79,6 +83,10 @@ function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [savingLevel, setSavingLevel] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [event, setEvent] = useState<EventSettings | null>(null)
+  const [duration, setDuration] = useState(60)
+  const [teams, setTeams] = useState<TeamRow[]>([])
+  const [secrets, setSecrets] = useState<SecretRow[]>([])
 
   async function loadGuardrails() {
     setLoading(true)
@@ -88,8 +96,17 @@ function AdminPage() {
     setLoading(false)
   }
 
+  async function loadAdminData() {
+    const [eventResult, teamsResult, secretsResult] = await Promise.all([
+      supabase.rpc('get_event_settings'), supabase.rpc('admin_list_teams'), supabase.rpc('admin_list_team_secrets'),
+    ])
+    if (!eventResult.error) setEvent((eventResult.data?.[0] ?? null) as EventSettings | null)
+    if (!teamsResult.error) setTeams((teamsResult.data ?? []) as TeamRow[])
+    if (!secretsResult.error) setSecrets((secretsResult.data ?? []) as SecretRow[])
+  }
+
   useEffect(() => {
-    if (profile?.is_admin) void loadGuardrails()
+    if (profile?.is_admin) { void loadGuardrails(); void loadAdminData() }
   }, [profile?.is_admin])
 
   if (!profile?.is_admin) return <Navigate to="/" replace />
@@ -125,10 +142,39 @@ function AdminPage() {
     }
   }
 
+  async function startEvent() {
+    const { error: startError } = await supabase.rpc('start_event', { p_duration_minutes: duration })
+    if (startError) setError('Unable to start event.')
+    else { toast.success('Event started.'); await loadAdminData() }
+  }
+
+  async function stopEvent() {
+    const { error: stopError } = await supabase.rpc('stop_event')
+    if (stopError) setError('Unable to stop event.')
+    else { toast.success('Event stopped and teams logged out.'); await loadAdminData() }
+  }
+
+  async function toggleLogins(disabled: boolean) {
+    const { error: lockError } = await supabase.rpc('set_login_lock', { p_disabled: disabled })
+    if (lockError) setError('Unable to update login lock.')
+    else await loadAdminData()
+  }
+
+  async function saveSecret(secret: SecretRow) {
+    if (!secret.target_secret.trim()) return setError('A team secret cannot be empty.')
+    const { error: saveError } = await supabase.rpc('save_team_secret', { p_user_id: secret.user_id, p_level_id: secret.level_id, p_target_secret: secret.target_secret })
+    if (saveError) setError(`Unable to save ${secret.username} Level ${secret.level_id}.`)
+    else toast.success(`Saved ${secret.username} Level ${secret.level_id}.`)
+  }
+
   return <main className="arena-shell admin-shell">
     <header className="arena-header"><div><div className="arena-logo display-font">AI Battle <strong>Arena</strong></div><span className="label accent-label">ADMIN CONTROL</span></div><button className="outline-button" onClick={async () => { await signOut(); navigate('/login') }}>LOG OUT</button></header>
-    <section className="admin-content"><div className="admin-heading"><div><p className="label accent-label">ROUND SETTINGS</p><h1 className="display-font">Guardrails.</h1><p className="muted">Configure each level. Provider credentials stay on the server and are never returned here.</p></div><span className="admin-badge">{profile.username}</span></div>
+    <section className="admin-content"><div className="admin-heading"><div><p className="label accent-label">ROUND SETTINGS</p><h1 className="display-font">Control room.</h1><p className="muted">Manage the event, teams, secrets, and level guardrails. Sensitive values stay server-side.</p></div><span className="admin-badge">{profile.username}</span></div>
       {error && <p className="error-banner admin-error" role="alert">{error}</p>}
+      <section className="admin-control-card"><div className="admin-card-heading"><div><span className="label accent-label">EVENT CONTROL</span><h2 className="display-font">{event?.status ?? 'loading'}</h2></div><span className={`status-pill ${event?.status ?? ''}`}>{event?.logins_disabled ? 'LOGINS LOCKED' : 'LOGINS OPEN'}</span></div><div className="event-actions"><label>Duration (minutes)<input type="number" min="1" max="480" value={duration} onChange={(e) => setDuration(Number(e.target.value))} /></label><button className="arena-button" onClick={() => void startEvent()}>START EVENT</button><button className="outline-button" onClick={() => void stopEvent()}>STOP EVENT</button><button className="outline-button" onClick={() => void toggleLogins(!(event?.logins_disabled ?? false))}>{event?.logins_disabled ? 'ENABLE LOGINS' : 'DISABLE LOGINS'}</button></div><p className="muted">{event?.end_time ? `Ends ${new Date(event.end_time).toLocaleString()}` : 'The event is not running.'}</p></section>
+      <section className="admin-control-card"><div className="admin-card-heading"><div><span className="label accent-label">TEAM SESSIONS</span><h2 className="display-font">{teams.length} teams</h2></div><button className="outline-button" onClick={() => void loadAdminData()}>REFRESH</button></div><div className="team-table">{teams.length === 0 ? <p className="muted">No team accounts yet.</p> : teams.map((team) => <div className="team-row" key={team.id}><strong>{team.username}</strong><span>{team.is_active ? '● ACTIVE' : '○ OFFLINE'}</span><span>{team.total_score} pts</span><button className="text-button" onClick={async () => { await supabase.rpc('force_logout_team', { p_user_id: team.id }); await loadAdminData() }}>FORCE LOGOUT</button></div>)}</div></section>
+      <section className="admin-control-card"><div className="admin-card-heading"><div><span className="label accent-label">TEAM SECRETS</span><h2 className="display-font">Target vault</h2></div></div><p className="muted">Secrets are never sent to participants. Save each team and level separately.</p><div className="secret-table">{secrets.length === 0 ? <p className="muted">No teams to configure.</p> : secrets.map((secret) => <div className="secret-row" key={`${secret.user_id}-${secret.level_id}`}><strong>{secret.username} · L{secret.level_id}</strong><input type="text" value={secret.target_secret} onChange={(e) => setSecrets((current) => current.map((item) => item.user_id === secret.user_id && item.level_id === secret.level_id ? { ...item, target_secret: e.target.value } : item))} /><button className="outline-button" onClick={() => void saveSecret(secret)}>SAVE</button></div>)}</div></section>
+      <div className="admin-section-title"><span className="label accent-label">LEVEL GUARDRAILS</span></div>
       {loading ? <p className="muted" role="status">Loading level settings…</p> : <div className="guardrail-list">{guardrails.map((draft) => <article className={`guardrail-card ${openLevel === draft.level_id ? 'open' : ''}`} key={draft.level_id}>
         <button className="guardrail-summary" onClick={() => setOpenLevel((level) => level === draft.level_id ? 0 : draft.level_id)} aria-expanded={openLevel === draft.level_id}><span><span className="label">LEVEL {draft.level_id}</span><strong className="display-font">{draft.model_name}</strong></span><span className="summary-meta">{draft.primary_key_configured ? 'PRIMARY KEY SET' : 'PROVIDER NOT CONFIGURED'} <b>{openLevel === draft.level_id ? '−' : '+'}</b></span></button>
         {openLevel === draft.level_id && <div className="guardrail-form"><div className="settings-grid">
