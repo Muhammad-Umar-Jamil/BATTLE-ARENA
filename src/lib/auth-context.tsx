@@ -4,7 +4,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase, supabaseConfigured } from './supabase'
 
 export type Profile = { id: string; username: string; total_score: number; is_admin: boolean }
-type AuthResult = { error: Error | null }
+type AuthResult = { error: Error | null; profile?: Profile | null }
 type AuthValue = { user: User | null; session: Session | null; profile: Profile | null; loading: boolean; signIn: (email: string, password: string) => Promise<AuthResult>; signOut: () => Promise<AuthResult> }
 const AuthContext = createContext<AuthValue | undefined>(undefined)
 
@@ -52,8 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn: async (email, password) => {
       if (!supabaseConfigured) return { error: new Error('Supabase is not configured.') }
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (!error && data.session) setSession(data.session)
-      return { error }
+      if (error || !data.session) return { error }
+      setSession(data.session)
+      const nextProfile = await fetchProfile(data.user.id)
+      return { error: null, profile: nextProfile }
     },
     signOut: async () => {
       if (!supabaseConfigured) return { error: null }
