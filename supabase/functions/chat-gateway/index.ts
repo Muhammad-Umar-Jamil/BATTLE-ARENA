@@ -35,14 +35,15 @@ Deno.serve(async (req) => {
     { endpoint: guardrail.secondary_endpoint, key: guardrail.secondary_api_key },
   ].filter((provider) => provider.endpoint && provider.key)
   let answer = ''
-  for (const provider of providers) {
+  let fallbackUsed = false
+  for (const [index, provider] of providers.entries()) {
     const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), guardrail.timeout_seconds * 1000)
     try {
       const response = await fetch(`${String(provider.endpoint).replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provider.key}` }, body: JSON.stringify({ model: guardrail.model_name, messages, temperature: guardrail.temperature, max_tokens: guardrail.max_tokens }) })
-      if (response.ok) { const result = await response.json(); answer = result?.choices?.[0]?.message?.content ?? ''; if (answer) break }
+      if (response.ok) { const result = await response.json(); answer = result?.choices?.[0]?.message?.content ?? ''; if (answer) { fallbackUsed = index > 0; break } }
     } catch { /* try fallback */ } finally { clearTimeout(timeout) }
   }
   if (!answer) return json({ error: 'PROVIDER_UNAVAILABLE' }, 502)
   await client.from('chat_messages').insert([{ user_id: authData.user.id, level_id: levelId, role: 'user', content: prompt }, { user_id: authData.user.id, level_id: levelId, role: 'assistant', content: answer }])
-  return json({ answer })
+  return json({ answer, fallback_used: fallbackUsed })
 })
