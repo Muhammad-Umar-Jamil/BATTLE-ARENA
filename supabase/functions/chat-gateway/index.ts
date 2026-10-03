@@ -25,11 +25,16 @@ Deno.serve(async (req) => {
   if (!profile.is_admin && (!profile.active_session_id || !profile.last_heartbeat || new Date(profile.last_heartbeat).getTime() <= Date.now() - 30000)) return json({ error: 'SESSION_EXPIRED' }, 403)
   const { data: event } = await client.from('event_settings').select('status,logins_disabled,end_time').eq('id', 1).maybeSingle()
   if (!profile.is_admin && (!event || event.status !== 'running' || event.logins_disabled || (event.end_time && new Date(event.end_time).getTime() <= Date.now()))) return json({ error: 'EVENT_NOT_RUNNING' }, 403)
-  const { data: guardrail } = await client.from('guardrails').select('system_prompt,model_name,temperature,max_tokens,primary_endpoint,primary_api_key,timeout_seconds,secondary_endpoint,secondary_api_key').eq('level_id', levelId).maybeSingle()
+  const { data: guardrail } = await client.from('guardrails').select('system_prompt,system_prompt_2,model_name,temperature,max_tokens,primary_endpoint,primary_api_key,timeout_seconds,secondary_endpoint,secondary_api_key').eq('level_id', levelId).maybeSingle()
   const { data: secret } = await client.from('team_secrets').select('target_secret').eq('user_id', authData.user.id).eq('level_id', levelId).maybeSingle()
   if (!guardrail || !secret?.target_secret) return json({ error: 'TARGET_NOT_CONFIGURED' }, 409)
   const { data: history } = await client.from('chat_messages').select('role,content').eq('user_id', authData.user.id).eq('level_id', levelId).is('deleted_at', null).order('created_at', { ascending: true }).limit(40)
-  const messages = [{ role: 'system', content: guardrail.system_prompt.replaceAll('{{SECRET}}', secret.target_secret) }, ...(history ?? []), { role: 'user', content: prompt }]
+  const messages = [
+    { role: 'system', content: guardrail.system_prompt.replaceAll('{{SECRET}}', secret.target_secret) },
+    { role: 'system', content: guardrail.system_prompt_2.replaceAll('{{SECRET}}', secret.target_secret) },
+    ...(history ?? []),
+    { role: 'user', content: prompt },
+  ]
   const providers = [
     { endpoint: guardrail.primary_endpoint, key: guardrail.primary_api_key },
     { endpoint: guardrail.secondary_endpoint, key: guardrail.secondary_api_key },

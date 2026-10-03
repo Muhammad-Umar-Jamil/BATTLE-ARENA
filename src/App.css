@@ -21,6 +21,7 @@
 .admin-heading h1 { font-size: clamp(58px, 8vw, 96px); line-height: .85; margin: 10px 0 14px; }
 .admin-badge { border: 1px solid var(--line); color: var(--yellow); border-radius: 999px; padding: 9px 13px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 .admin-error { margin-bottom: 18px; }
+.admin-tabs { display: flex; gap: 8px; margin: 20px 0; flex-wrap: wrap; }.admin-tab { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; padding: 12px 18px; font-size: 11px; letter-spacing: .12em; font-weight: 700; }.admin-tab.active { color: var(--yellow); border-color: var(--yellow); background: #f4d00012; }
 .admin-control-card { margin: 18px 0; padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 .admin-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .admin-card-heading h2 { font-size: 42px; line-height: .9; margin: 8px 0 0; }

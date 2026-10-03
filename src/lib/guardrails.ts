@@ -1,6 +1,7 @@
 export type Guardrail = {
   level_id: number
   system_prompt: string
+  system_prompt_2: string
   model_name: string
   temperature: number
   max_tokens: number
