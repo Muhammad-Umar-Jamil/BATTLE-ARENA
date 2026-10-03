@@ -10,7 +10,7 @@ function LoadingScreen() {
 }
 
 function LoginPage() {
-  const { user, loading, signIn } = useAuth()
+  const { user, profile, loading, signIn } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -33,7 +33,8 @@ function LoginPage() {
     setSubmitting(false)
     if (result.error) return setError('Invalid email or password.')
     toast.success('Signed in successfully.')
-    navigate('/')
+    const destination = profile?.is_admin ? '/admin' : '/'
+    navigate(destination)
   }
 
   return <main className="login-screen">
@@ -67,4 +68,5 @@ function ArenaPage() {
 function AdminPage() { const { profile } = useAuth(); if (!profile?.is_admin) return <Navigate to="/" replace />; return <main className="arena-shell"><section className="admin-placeholder"><p className="label accent-label">ADMIN CONTROL</p><h1 className="display-font">Provider settings.</h1><p className="muted">Primary and fallback provider settings will be connected in a later phase. No provider keys are configured.</p></section></main> }
 function AppRoutes() { return <Routes><Route path="/login" element={<LoginPage />} /><Route path="/" element={<ProtectedRoute><ArenaPage /></ProtectedRoute>} /><Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} /><Route path="*" element={<Navigate to="/" replace />} /></Routes> }
 export default function App() { return <AuthProvider><AppRoutes /></AuthProvider> }
+
 
