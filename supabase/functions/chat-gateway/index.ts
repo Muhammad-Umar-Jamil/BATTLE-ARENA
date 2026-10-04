@@ -58,7 +58,8 @@ Deno.serve(async (req) => {
   if (!profile.is_admin && (!profile.active_session_id || !profile.last_heartbeat || new Date(profile.last_heartbeat).getTime() <= Date.now() - 30000)) return json({ error: 'SESSION_EXPIRED' }, 403)
   const { data: event } = await client.from('event_settings').select('status,logins_disabled,end_time').eq('id', 1).maybeSingle()
   if (!profile.is_admin && (!event || event.status !== 'running' || event.logins_disabled || (event.end_time && new Date(event.end_time).getTime() <= Date.now()))) return json({ error: 'EVENT_NOT_RUNNING' }, 403)
-  const { data: existingSubmission } = await client.from('submissions').select('id').eq('user_id', authData.user.id).eq('level_id', levelId).maybeSingle()
+  const { data: existingSubmission, error: submissionError } = await client.from('submissions').select('id').eq('user_id', authData.user.id).eq('level_id', levelId).maybeSingle()
+  if (submissionError) return json({ error: 'SUBMISSION_CHECK_FAILED' }, 503)
   if (existingSubmission) return json({ error: 'LEVEL_LOCKED' }, 409)
   // Read the delay for every request so an admin change applies to the next
   // prompt without rebuilding or redeploying the browser application.
