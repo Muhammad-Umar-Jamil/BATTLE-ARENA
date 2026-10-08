@@ -62,7 +62,7 @@ input[type="range"] { accent-color: var(--yellow); padding: 8px 0; }
 .section-heading { justify-content: space-between; }.section-heading > div { display: grid; gap: 4px; }.clear-chat-button { flex: 0 0 auto; padding: 9px 12px; font-size: 10px; }.level-locked-message { margin: 10px 30px; padding: 10px 12px; border: 1px solid #ff9bbd66; border-radius: 8px; color: #ffb6cb; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-align: center; } .clear-chat-button:disabled { opacity: .45; }
 
 .participant-arena { height: 100dvh; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
-.participant-arena .arena-grid { min-height: 0; height: 100%; overflow: hidden; }
+.participant-arena .arena-grid { min-height: 0; overflow: hidden; }
 .participant-arena .arena-center { min-height: 0; overflow: hidden; }
 .participant-arena .chat-history { min-height: 0; max-height: none; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
 .participant-arena .section-heading, .participant-arena .composer, .participant-arena .guess-form, .participant-arena .result-card, .participant-arena .level-locked-message { flex-shrink: 0; }

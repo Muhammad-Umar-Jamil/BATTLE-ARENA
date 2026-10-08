@@ -29,6 +29,7 @@ test('BROWSER-009/010/011/012: responsive pages render without application error
   await expect(page.getByTestId('chat-input')).toBeVisible()
   await expect(page.getByTestId('guess-input')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true)
+  expect(await page.getByTestId('guess-input').evaluate((input) => input.getBoundingClientRect().bottom <= window.innerHeight)).toBe(true)
   await page.getByRole('button', { name: 'Leaderboard and account' }).click()
   await expect(page.getByTestId('logout-button')).toBeVisible()
   await context.close()
