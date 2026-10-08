@@ -42,7 +42,7 @@ export function groupArchivedChats(rows: ArchivedChatMessage[]): ArchivedChatTea
 
   return [...teams.entries()].map(([username, levels]) => {
     const groupedLevels = [...levels.entries()].map(([levelId, messages]) => {
-      const sortedMessages = [...messages].sort((a, b) => messageTime(b) - messageTime(a))
+      const sortedMessages = [...messages].sort((a, b) => messageTime(a) - messageTime(b))
       const latestRow = messages.reduce<ArchivedChatMessage | null>((latest, row) => !latest || archiveTime(row) > archiveTime(latest) ? row : latest, null)
       const latestActivity = latestRow ? (latestRow.deleted_at || latestRow.created_at) : ''
       return { levelId, messageCount: sortedMessages.length, latestActivity, messages: sortedMessages }

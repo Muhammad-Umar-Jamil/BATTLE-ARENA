@@ -15,13 +15,13 @@ describe('archived chat grouping', () => {
     expect(grouped[0].levels[0].messages.map((row) => row.username)).toEqual(['Beta'])
   })
 
-  it('counts teams and levels and orders messages newest first', () => {
+  it('counts teams and levels and orders messages oldest first', () => {
     const grouped = groupArchivedChats([
       message('old', 'Alpha', 1, '2026-10-09T09:00:00Z'), message('new', 'Alpha', 1, '2026-10-09T13:00:00Z'), message('mid', 'Alpha', 1, '2026-10-09T11:00:00Z'),
     ])
     expect(grouped[0].messageCount).toBe(3)
     expect(grouped[0].levels[0].messageCount).toBe(3)
-    expect(grouped[0].levels[0].messages.map((row) => row.id)).toEqual(['new', 'mid', 'old'])
+    expect(grouped[0].levels[0].messages.map((row) => row.id)).toEqual(['old', 'mid', 'new'])
   })
 
   it('returns an empty list for empty history', () => {
