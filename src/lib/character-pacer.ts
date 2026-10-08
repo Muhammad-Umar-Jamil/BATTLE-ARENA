@@ -8,21 +8,26 @@ export function createCharacterPacer(
   gapMs: number,
   emit: (character: string) => void,
   sleep: (milliseconds: number) => Promise<void> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  now: () => number = Date.now,
 ): CharacterPacer {
-  let queue = ''
+  const queue: string[] = []
   let currentGap = Math.max(0, gapMs)
   let running = false
   let finished = false
+  let lastEmittedAt: number | null = null
   let resolveFinished: (() => void) | null = null
 
   const pump = async () => {
     if (running) return
     running = true
     while (queue.length > 0) {
-      const character = queue[0]
-      queue = queue.slice(1)
+      if (lastEmittedAt !== null) {
+        const remaining = currentGap - (now() - lastEmittedAt)
+        if (remaining > 0) await sleep(remaining)
+      }
+      const character = queue.shift()!
       emit(character)
-      if (queue.length > 0 && currentGap > 0) await sleep(currentGap)
+      lastEmittedAt = now()
     }
     running = false
     if (finished) resolveFinished?.()
@@ -31,7 +36,7 @@ export function createCharacterPacer(
   return {
     enqueue(text) {
       if (finished) return
-      queue += text
+      queue.push(...Array.from(text))
       void pump()
     },
     setGap(milliseconds) { currentGap = Math.max(0, milliseconds) },

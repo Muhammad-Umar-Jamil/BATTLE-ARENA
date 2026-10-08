@@ -60,3 +60,50 @@ input[type="range"] { accent-color: var(--yellow); padding: 8px 0; }
 
 .chat-archive-list { display: grid; gap: 10px; }.chat-archive-row { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }.chat-archive-row strong, .chat-archive-row small { display: block; }.chat-archive-row small { margin-top: 4px; color: var(--muted); }.chat-archive-row p { margin: 10px 0 0; white-space: pre-wrap; line-height: 1.45; }
 .section-heading { justify-content: space-between; }.section-heading > div { display: grid; gap: 4px; }.clear-chat-button { flex: 0 0 auto; padding: 9px 12px; font-size: 10px; }.level-locked-message { margin: 10px 30px; padding: 10px 12px; border: 1px solid #ff9bbd66; border-radius: 8px; color: #ffb6cb; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-align: center; } .clear-chat-button:disabled { opacity: .45; }
+
+.participant-arena { height: 100dvh; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.participant-arena .arena-grid { min-height: 0; height: 100%; overflow: hidden; }
+.participant-arena .arena-center { min-height: 0; overflow: hidden; }
+.participant-arena .chat-history { min-height: 0; max-height: none; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
+.participant-arena .section-heading, .participant-arena .composer, .participant-arena .guess-form, .participant-arena .result-card, .participant-arena .level-locked-message { flex-shrink: 0; }
+.participant-arena .composer { margin: 0; padding-top: 12px; padding-bottom: 12px; }
+.participant-arena .guess-form { margin: 0; }
+.participant-arena .error-banner { margin: 4px 30px; flex-shrink: 0; }
+.mobile-leaders { display: none; }
+
+@media (max-width: 980px) {
+  .participant-arena .arena-grid { position: relative; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .participant-arena .arena-rail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 7px 12px; }
+  .participant-arena .arena-rail > .label, .participant-arena .target-button { display: none; }
+  .participant-arena .level-button { min-width: 0; margin: 0; padding: 6px 9px; }
+  .participant-arena .level-button b { font-size: 22px; }
+  .participant-arena .level-button strong { font-size: 19px; }
+  .participant-arena .arena-panel { display: none; position: absolute; z-index: 5; top: 0; right: 0; width: min(330px, 90%); max-height: 100%; overflow-y: auto; border: 1px solid var(--line); box-shadow: -15px 12px 40px #000a; }
+  .participant-arena .arena-panel.open { display: block; }
+  .mobile-leaders { display: block; padding: 8px 12px; font-size: 20px; line-height: 1; }
+}
+
+@media (max-width: 600px) {
+  .participant-arena .arena-header { gap: 8px; padding: 9px 12px; }
+  .participant-arena .arena-logo { font-size: 19px; }
+  .participant-arena .arena-header .label { font-size: 9px; letter-spacing: 0; }
+  .participant-arena .timer strong { font-size: 31px; }
+  .participant-arena .score strong { font-size: 28px; }
+  .participant-arena .arena-rail { padding: 5px 8px; }
+  .participant-arena .level-button { gap: 2px; padding: 5px; }
+  .participant-arena .level-button small { font-size: 8px; letter-spacing: 0; }
+  .participant-arena .level-button b { font-size: 18px; }
+  .participant-arena .level-button strong { font-size: 16px; }
+  .participant-arena .section-heading { align-items: center; padding: 8px 12px; }
+  .participant-arena .section-heading span:first-child { font-size: 23px; }
+  .participant-arena .clear-chat-button { padding: 7px; font-size: 9px; }
+  .participant-arena .chat-history { padding: 12px; }
+  .participant-arena .chat-message { max-width: 94%; }
+  .participant-arena .composer { padding: 8px 12px; gap: 7px; }
+  .participant-arena .composer textarea { height: 52px; padding: 8px; }
+  .participant-arena .composer button, .participant-arena .guess-form button { padding: 9px; font-size: 10px; }
+  .participant-arena .guess-form { padding: 0 12px 8px; gap: 7px; }
+  .participant-arena .guess-form input { min-width: 0; padding: 9px; }
+  .participant-arena .result-card, .participant-arena .level-locked-message { margin: 0 12px 7px; padding: 7px; }
+  .participant-arena .error-banner { margin: 3px 12px; font-size: 11px; }
+}

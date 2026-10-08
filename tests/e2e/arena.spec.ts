@@ -24,13 +24,23 @@ test('CHAT-001/002/003/005/008 and BROWSER-008: chat UI accepts a controlled res
   const page = await context.newPage()
   await loginTeam(page, team)
   await page.route('**/functions/v1/chat-gateway', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ answer: 'Controlled clue response' }) })
+    await route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: [
+      JSON.stringify({ type: 'meta', stream_delay_ms: 10, fallback_used: false }),
+      JSON.stringify({ type: 'chunk', content: 'Controlled clue response' }),
+      JSON.stringify({ type: 'done' }),
+    ].join('\n') + '\n' })
   })
   await page.getByTestId('chat-submit').click()
   await expect(page.getByTestId('chat-input')).toBeEnabled()
   await page.getByTestId('chat-input').fill('Give me a safe clue')
-  await page.getByTestId('chat-submit').click()
+  await page.getByTestId('chat-input').press('Enter')
   await expect(page.getByTestId('chat-history')).toContainText('Controlled clue response')
+  await expect(page.getByTestId('chat-submit')).toBeEnabled()
+  await page.getByTestId('chat-input').fill('First line')
+  await page.getByTestId('chat-input').press('Shift+Enter')
+  await expect(page.getByTestId('chat-input')).toHaveValue('First line\n')
+  await page.getByTestId('chat-input').dispatchEvent('keydown', { key: 'Enter', isComposing: true })
+  await expect(page.getByTestId('chat-input')).toHaveValue('First line\n')
   await page.getByTestId('clear-chat').click()
   await expect(page.getByTestId('chat-history')).not.toContainText('Controlled clue response')
   await context.close()
