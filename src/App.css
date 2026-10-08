@@ -100,7 +100,8 @@ input[type="range"] { accent-color: var(--yellow); padding: 8px 0; }
   .participant-arena .chat-history { padding: 12px; }
   .participant-arena .chat-message { max-width: 94%; }
   .participant-arena .composer { padding: 8px 12px; gap: 7px; }
-  .participant-arena .composer textarea { height: 52px; padding: 8px; }
+  .participant-arena .composer textarea { height: 60px; padding: 8px; scrollbar-width: none; }
+  .participant-arena .composer textarea::-webkit-scrollbar { display: none; }
   .participant-arena .composer button, .participant-arena .guess-form button { padding: 9px; font-size: 10px; }
   .participant-arena .guess-form { padding: 0 12px 8px; gap: 7px; }
   .participant-arena .guess-form input { min-width: 0; padding: 9px; }
