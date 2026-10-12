@@ -115,3 +115,18 @@ input[type="range"] { accent-color: var(--yellow); padding: 8px 0; }
   .participant-arena .result-card, .participant-arena .level-locked-message { margin: 0 12px 7px; padding: 7px; }
   .participant-arena .error-banner { margin: 3px 12px; font-size: 11px; }
 }
+
+.team-row { grid-template-columns: minmax(110px, 1fr) 100px 70px minmax(150px, 1fr) auto auto; }
+.danger-button { color: #ff8c8c; }
+.danger-button:disabled { opacity: .5; cursor: wait; }
+.guess-round-filter { max-width: 220px; margin-bottom: 18px; }
+.guess-round-filter select { padding: 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--white); background: var(--surface); }
+.admin-guess-list { display: grid; gap: 20px; }
+.admin-guess-team { border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.admin-guess-team h3 { margin: 0 0 12px; overflow-wrap: anywhere; color: var(--yellow); }
+.admin-guess-row { padding: 14px 0; border-top: 1px solid var(--line); }
+.admin-guess-row dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 0; }
+.admin-guess-row dt { color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+.admin-guess-row dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .team-row { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .team-row, .admin-guess-row dl { grid-template-columns: 1fr; } }

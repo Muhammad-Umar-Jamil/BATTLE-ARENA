@@ -11,7 +11,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }], ['json', { outputFile: 'playwright-report/results.json' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL,
-    trace: 'retain-on-failure',
+    storageState: process.env.E2E_ADMIN_STORAGE_STATE,
+    trace: process.env.E2E_NO_TRACE === 'true' ? 'off' : 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     viewport: { width: 1440, height: 900 },

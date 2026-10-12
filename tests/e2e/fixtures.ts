@@ -2,6 +2,12 @@ import { test as base, expect, type Page } from '@playwright/test'
 
 export const test = base.extend<{ adminPage: Page }>({
   adminPage: async ({ page }, done) => {
+    if (process.env.E2E_ADMIN_STORAGE_STATE) {
+      await page.goto('/admin')
+      await expect(page.getByTestId('admin-page')).toBeVisible()
+      await done(page)
+      return
+    }
     const email = process.env.E2E_ADMIN_EMAIL
     const password = process.env.E2E_ADMIN_PASSWORD
     if (!process.env.E2E_BASE_URL || !email || !password) {
