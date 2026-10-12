@@ -9,7 +9,7 @@ try {
   const page = await context.newPage()
   await page.goto(`${baseURL}/login`)
   console.log('Please sign in as admin in the test browser. No password will be saved.')
-  await page.getByTestId('admin-page').waitFor({ state: 'visible', timeout: 300_000 })
+  await page.getByTestId('admin-page').waitFor({ state: 'visible', timeout: 900_000 })
   await context.storageState({ path })
   console.log('Admin session ready for live tests. Delete the .local session file after testing.')
 } finally { await browser.close() }

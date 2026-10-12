@@ -12,8 +12,9 @@ Validated on 12 October 2026:
 - Both score-recording function signatures were confirmed inaccessible to participants. The older deployed signature required an explicit permission fix in migration `20261012000200_submission_server_permissions.sql`.
 - The deployed deletion endpoint rejected missing and invalid login tokens with 401, rejected GET with 405, and accepted browser preflight with 200.
 - The existing authenticated Chrome session displayed all three independent shared-word controls and loaded 58 teams in the new guesses dashboard without an error banner.
+- The signed-in Chrome session also verified that filtering to Round 2 showed only Round 2 rows, with no desktop horizontal page overflow. Round 1 and Round 2 shared-word inputs retained independent unsaved values while Round 3 remained empty.
 
-The automated authenticated browser tests reached the login screen but could not proceed because the previously provided admin password was rejected. A separate browser was opened for manual sign-in; its five-minute sign-in window expired. These tests are implemented but remain pending:
+The automated authenticated browser tests reached the login screen but could not proceed because the previously provided admin password was rejected. Separate manual sign-in windows expired before login completed. The helper now allows fifteen minutes for sign-in. These automated tests are implemented but remain pending:
 
 - Desktop and phone result filtering and page width.
 - Independent round input values and cancellation of bulk changes.
