@@ -12,7 +12,8 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL,
     storageState: process.env.E2E_ADMIN_STORAGE_STATE,
-    trace: process.env.E2E_NO_TRACE === 'true' ? 'off' : 'retain-on-failure',
+    // Authenticated traces can contain passwords and full authorization headers.
+    trace: 'off',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     viewport: { width: 1440, height: 900 },

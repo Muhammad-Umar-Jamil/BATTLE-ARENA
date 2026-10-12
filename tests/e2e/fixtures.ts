@@ -17,7 +17,12 @@ export const test = base.extend<{ adminPage: Page }>({
     await page.getByTestId('email-input').fill(email)
     await page.getByTestId('password-input').fill(password)
     await page.getByTestId('login-submit').click()
-    await expect(page.getByTestId('admin-page')).toBeVisible()
+    try { await expect(page.getByTestId('admin-page')).toBeVisible() }
+    catch {
+      // Remove the password before Playwright saves its failure snapshot.
+      if (await page.getByTestId('password-input').isVisible()) await page.getByTestId('password-input').fill('')
+      throw new Error('Admin login failed. Use current credentials or capture a fresh admin test session.')
+    }
     await done(page)
   },
 })
