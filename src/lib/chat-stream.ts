@@ -1,8 +1,8 @@
 export type ChatStreamEvent =
-  | { type: 'meta'; stream_delay_ms: number; fallback_used: boolean }
+  | { type: 'meta'; stream_delay_ms: number; fallback_used: boolean; provider?: 'primary' | 'fallback' }
   | { type: 'chunk'; content: string }
-  | { type: 'done'; fallback_used?: boolean }
-  | { type: 'error'; error: string }
+  | { type: 'done'; fallback_used?: boolean; provider?: 'primary' | 'fallback' }
+  | { type: 'error'; error: string; message?: string; provider_failed?: boolean; attempts?: number }
 
 export function parseChatStreamLine(line: string): ChatStreamEvent | null {
   const trimmed = line.trim()
@@ -23,7 +23,7 @@ export async function readChatStream(stream: ReadableStream<Uint8Array>, onEvent
     if (!line.trim()) return
     const event = parseChatStreamLine(line)
     if (!event) throw new Error('The chat stream contained an invalid event.')
-    if (event.type === 'error') throw new Error(event.error)
+    if (event.type === 'error') throw new Error(event.message ?? event.error)
     if (completed) throw new Error('The chat stream continued after completion.')
     onEvent(event)
     if (event.type === 'done') completed = true

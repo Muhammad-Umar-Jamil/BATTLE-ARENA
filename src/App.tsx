@@ -116,7 +116,7 @@ function ArenaPage() {
     } catch (streamError) {
       if (pacer) await pacer.finish()
       setMessages((items) => items.at(-1)?.role === 'assistant' && !items.at(-1)?.content ? items.slice(0, -1) : items)
-      setError(streamError instanceof Error && streamError.message !== 'PROVIDER_UNAVAILABLE' ? streamError.message : 'The warden could not answer.')
+      setError(streamError instanceof Error ? streamError.message : 'The Warden could not answer because the AI provider failed. This was a provider failure, not a prompt answer.')
     } finally { setBusy(false) }
   }
   async function clearHistory() { if (currentLevelLocked) return; const { error: clearError } = await supabase.rpc('clear_chat_history', { p_level_id: level }); if (clearError) { setError('Unable to clear this level history.'); return } setMessages([]); toast.success(`Level ${level} chat history cleared.`) }

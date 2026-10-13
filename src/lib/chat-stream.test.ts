@@ -35,7 +35,7 @@ describe('chat stream protocol', () => {
     const stream = (line: string) => new ReadableStream<Uint8Array>({
       start(controller) { controller.enqueue(new TextEncoder().encode(line)); controller.close() },
     })
-    await expect(readChatStream(stream('{"type":"error","error":"Provider failed"}\n'), () => {})).rejects.toThrow('Provider failed')
+    await expect(readChatStream(stream('{"type":"error","error":"PROVIDER_UNAVAILABLE","message":"Provider failed"}\n'), () => {})).rejects.toThrow('Provider failed')
     await expect(readChatStream(stream('{"type":"chunk","content":"partial"}\n'), () => {})).rejects.toThrow('ended before')
   })
 })

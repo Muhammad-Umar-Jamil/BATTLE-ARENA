@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { providerAttemptOrder, type ProviderSlot } from './retry.ts'
 
 type ChatBody = { level_id?: number; prompt?: string }
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
@@ -10,9 +11,10 @@ function providerText(payload: any) {
   return payload?.choices?.[0]?.delta?.content ?? payload?.choices?.[0]?.message?.content ?? ''
 }
 
-async function readProvider(response: Response, emit: (event: unknown) => void) {
+async function readProvider(response: Response) {
   const contentType = response.headers.get('content-type') ?? ''
   let answer = ''
+  const chunks: string[] = []
   if (contentType.includes('text/event-stream') && response.body) {
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
     const consume = (line: string) => {
@@ -20,7 +22,7 @@ async function readProvider(response: Response, emit: (event: unknown) => void) 
       if (!value.startsWith('data:')) return
       const data = value.slice(5).trim()
       if (!data || data === '[DONE]') return
-      try { const text = String(providerText(JSON.parse(data))); if (text) { answer += text; emit({ type: 'chunk', content: text }) } } catch { /* ignore keep-alive or malformed provider lines */ }
+      try { const text = String(providerText(JSON.parse(data))); if (text) { answer += text; chunks.push(text) } } catch { /* ignore keep-alive or malformed provider lines */ }
     }
     while (true) {
       const next = await reader.read(); if (next.done) break
@@ -31,9 +33,9 @@ async function readProvider(response: Response, emit: (event: unknown) => void) 
     consume(buffer)
   } else {
     const payload = await response.json(); const text = String(providerText(payload))
-    if (text) { answer = text; emit({ type: 'chunk', content: text }) }
+    if (text) { answer = text; chunks.push(text) }
   }
-  return answer
+  return { answer, chunks }
 }
 
 Deno.serve(async (req) => {
@@ -73,31 +75,47 @@ Deno.serve(async (req) => {
     ...(history ?? []),
     { role: 'user', content: prompt },
   ]
-  const providers = [
-    { endpoint: guardrail.primary_endpoint, key: guardrail.primary_api_key },
-    { endpoint: guardrail.secondary_endpoint, key: guardrail.secondary_api_key },
-  ].filter((provider) => provider.endpoint && provider.key)
+  const providers: Record<ProviderSlot, { endpoint: string; key: string } | null> = {
+    primary: guardrail.primary_endpoint && guardrail.primary_api_key ? { endpoint: guardrail.primary_endpoint, key: guardrail.primary_api_key } : null,
+    fallback: guardrail.secondary_endpoint && guardrail.secondary_api_key ? { endpoint: guardrail.secondary_endpoint, key: guardrail.secondary_api_key } : null,
+  }
+  // The request keeps cycling until a configured provider returns a usable
+  // answer. The four-slot cycle is primary twice, fallback twice, then repeat.
+  const attempts = providerAttemptOrder(Boolean(providers.primary), Boolean(providers.fallback), 4)
   const stream = new ReadableStream({
     start(controller) {
       const emit = (event: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
       void (async () => {
         let answer = ''
-        let fallbackUsed = false
-        for (const [index, provider] of providers.entries()) {
+        let selectedSlot: ProviderSlot | null = null
+        let providerResult: { answer: string; chunks: string[] } | null = null
+        let attemptCount = 0
+        while (!providerResult && attempts.length > 0) {
+          const slot = attempts[attemptCount % attempts.length]
+          attemptCount += 1
+          const provider = providers[slot]
+          if (!provider) continue
           const requestController = new AbortController(); const timeout = setTimeout(() => requestController.abort(), guardrail.timeout_seconds * 1000)
           try {
             const response = await fetch(`${String(provider.endpoint).replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal: requestController.signal, headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json', Authorization: `Bearer ${provider.key}` }, body: JSON.stringify({ model: guardrail.model_name, messages, temperature: guardrail.temperature, max_tokens: guardrail.max_tokens, stream: true }) })
             if (response.ok) {
-              emit({ type: 'meta', stream_delay_ms: Math.max(10, Math.min(2000, Number(guardrail.stream_delay_ms) || 50)), fallback_used: index > 0 })
-              answer = await readProvider(response, emit)
-              if (answer) { fallbackUsed = index > 0; break }
+              const result = await readProvider(response)
+              if (result.answer) { providerResult = result; selectedSlot = slot; break }
             }
+            await response.body?.cancel().catch(() => undefined)
           } catch { /* try fallback */ } finally { clearTimeout(timeout) }
         }
-        if (!answer) { emit({ type: 'error', error: 'PROVIDER_UNAVAILABLE' }); controller.close(); return }
+        if (!providerResult || !selectedSlot) {
+          const noProvider = attempts.length === 0
+          emit({ type: 'error', error: noProvider ? 'PROVIDER_NOT_CONFIGURED' : 'PROVIDER_UNAVAILABLE', message: noProvider ? 'The Warden is unavailable because no AI provider is configured.' : 'The Warden could not answer because the configured AI provider failed. This was a provider failure, not a prompt answer.', provider_failed: !noProvider })
+          controller.close(); return
+        }
+        answer = providerResult.answer
+        emit({ type: 'meta', stream_delay_ms: Math.max(10, Math.min(2000, Number(guardrail.stream_delay_ms) || 50)), fallback_used: selectedSlot === 'fallback', provider: selectedSlot })
+        for (const chunk of providerResult.chunks) emit({ type: 'chunk', content: chunk })
         await client.from('chat_messages').insert([{ user_id: authData.user.id, level_id: levelId, role: 'user', content: prompt }, { user_id: authData.user.id, level_id: levelId, role: 'assistant', content: answer }])
-        emit({ type: 'done', fallback_used: fallbackUsed }); controller.close()
-      })().catch(() => { emit({ type: 'error', error: 'PROVIDER_UNAVAILABLE' }); controller.close() })
+        emit({ type: 'done', fallback_used: selectedSlot === 'fallback', provider: selectedSlot }); controller.close()
+      })().catch(() => { emit({ type: 'error', error: 'PROVIDER_UNAVAILABLE', message: 'The Warden could not answer because the AI provider failed. This was a provider failure, not a prompt answer.', provider_failed: true }); controller.close() })
     },
   })
   return new Response(stream, { headers: streamHeaders })
