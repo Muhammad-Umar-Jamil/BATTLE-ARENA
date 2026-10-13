@@ -12,3 +12,7 @@ export function readServerClock(anchor: ServerClockAnchor, monotonicNow: number)
 export function secondsRemaining(endTime: string, serverNowMs: number): number {
   return Math.max(0, Math.floor((new Date(endTime).getTime() - serverNowMs) / 1000))
 }
+
+export function isEventExpired(status: string, endTime: string | null, serverNowMs: number): boolean {
+  return status !== 'running' || !endTime || new Date(endTime).getTime() <= serverNowMs
+}

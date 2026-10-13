@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createServerClockAnchor, readServerClock, secondsRemaining } from './server-clock'
+import { createServerClockAnchor, isEventExpired, readServerClock, secondsRemaining } from './server-clock'
 
 describe('server clock', () => {
   it('uses server time and compensates for half of the request delay', () => {
@@ -16,5 +16,11 @@ describe('server clock', () => {
     const end = '2026-10-13T10:01:00.000Z'
     expect(secondsRemaining(end, Date.parse('2026-10-13T10:00:58.900Z'))).toBe(1)
     expect(secondsRemaining(end, Date.parse('2026-10-13T10:01:01.000Z'))).toBe(0)
+  })
+
+  it('keeps a participant signed in when the server confirms the event is still running', () => {
+    expect(isEventExpired('running', '2026-10-13T10:01:00.000Z', Date.parse('2026-10-13T10:00:00.000Z'))).toBe(false)
+    expect(isEventExpired('finished', '2026-10-13T10:01:00.000Z', Date.parse('2026-10-13T10:00:00.000Z'))).toBe(true)
+    expect(isEventExpired('running', '2026-10-13T10:00:00.000Z', Date.parse('2026-10-13T10:00:00.000Z'))).toBe(true)
   })
 })
