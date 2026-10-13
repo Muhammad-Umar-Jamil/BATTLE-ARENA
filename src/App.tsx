@@ -108,6 +108,12 @@ function ArenaPage() {
           if (!receivedMeta) throw new Error('The chat stream did not send its settings first.')
           receivedContent ||= streamEvent.content.length > 0
           pacer!.enqueue(streamEvent.content)
+          setError('')
+        } else if (streamEvent.type === 'reset') {
+          pacer!.reset(); visible = ''; receivedContent = false
+          setMessages((items) => items.map((item, index) => index === items.length - 1 ? { ...item, content: '' } : item))
+        } else if (streamEvent.type === 'retry') {
+          setError(`AI provider failed (${streamEvent.reason}${streamEvent.status ? ` ${streamEvent.status}` : ''}). Retrying automatically; attempt ${streamEvent.attempt} used ${streamEvent.provider}.`)
         } else if (streamEvent.type === 'done' && !receivedContent) {
           throw new Error('The warden returned an empty answer.')
         }
@@ -116,7 +122,7 @@ function ArenaPage() {
     } catch (streamError) {
       if (pacer) await pacer.finish()
       setMessages((items) => items.at(-1)?.role === 'assistant' && !items.at(-1)?.content ? items.slice(0, -1) : items)
-      setError(streamError instanceof Error ? streamError.message : 'The Warden could not answer because the AI provider failed. This was a provider failure, not a prompt answer.')
+      setError(streamError instanceof Error ? (streamError instanceof TypeError ? 'The connection to the chat server failed. This does not confirm an AI provider failure.' : streamError.message) : 'The chat request failed for an unknown reason.')
     } finally { setBusy(false) }
   }
   async function clearHistory() { if (currentLevelLocked) return; const { error: clearError } = await supabase.rpc('clear_chat_history', { p_level_id: level }); if (clearError) { setError('Unable to clear this level history.'); return } setMessages([]); toast.success(`Level ${level} chat history cleared.`) }

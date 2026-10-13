@@ -3,13 +3,16 @@ export type ChatStreamEvent =
   | { type: 'chunk'; content: string }
   | { type: 'done'; fallback_used?: boolean; provider?: 'primary' | 'fallback' }
   | { type: 'error'; error: string; message?: string; provider_failed?: boolean; attempts?: number }
+  | { type: 'reset' }
+  | { type: 'ping' }
+  | { type: 'retry'; provider: 'primary' | 'fallback'; attempt: number; reason: string; status?: number }
 
 export function parseChatStreamLine(line: string): ChatStreamEvent | null {
   const trimmed = line.trim()
   if (!trimmed) return null
   try {
     const event = JSON.parse(trimmed) as ChatStreamEvent
-    if (event.type === 'meta' || event.type === 'chunk' || event.type === 'done' || event.type === 'error') return event
+    if (['meta', 'chunk', 'done', 'error', 'reset', 'ping', 'retry'].includes(event.type)) return event
   } catch { /* incomplete or invalid line; caller can ignore it */ }
   return null
 }

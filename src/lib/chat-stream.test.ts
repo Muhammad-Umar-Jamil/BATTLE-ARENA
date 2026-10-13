@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { parseChatStreamLine, readChatStream, type ChatStreamEvent } from './chat-stream'
 
 describe('chat stream protocol', () => {
+  it('delivers retry, reset, heartbeat and eventual success in order', async () => {
+    const events: ChatStreamEvent[] = [
+      { type: 'meta', stream_delay_ms: 30, fallback_used: false },
+      { type: 'chunk', content: 'discard' }, { type: 'reset' },
+      { type: 'retry', provider: 'primary', attempt: 9, reason: 'HTTP_ERROR', status: 503 },
+      { type: 'ping' }, { type: 'chunk', content: 'success' }, { type: 'done' },
+    ]
+    const received: ChatStreamEvent[] = []
+    const stream = new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(events.map((event) => JSON.stringify(event)).join('\n')))
+      controller.close()
+    } })
+    await readChatStream(stream, (event) => received.push(event))
+    expect(received).toEqual(events)
+  })
   it('parses metadata, chunks, and completion', () => {
     expect(parseChatStreamLine('{"type":"meta","stream_delay_ms":40,"fallback_used":false}')).toEqual({ type: 'meta', stream_delay_ms: 40, fallback_used: false })
     expect(parseChatStreamLine('{"type":"chunk","content":"Hi"}')).toEqual({ type: 'chunk', content: 'Hi' })

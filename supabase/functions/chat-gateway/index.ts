@@ -1,42 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { providerAttemptOrder, type ProviderSlot } from './retry.ts'
+import { readProvider, ProviderFailure } from './provider-stream.ts'
 
 type ChatBody = { level_id?: number; prompt?: string }
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
 const streamHeaders = { ...cors, 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' }
 const encoder = new TextEncoder()
-
-function providerText(payload: any) {
-  return payload?.choices?.[0]?.delta?.content ?? payload?.choices?.[0]?.message?.content ?? ''
-}
-
-async function readProvider(response: Response) {
-  const contentType = response.headers.get('content-type') ?? ''
-  let answer = ''
-  const chunks: string[] = []
-  if (contentType.includes('text/event-stream') && response.body) {
-    const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
-    const consume = (line: string) => {
-      const value = line.trim()
-      if (!value.startsWith('data:')) return
-      const data = value.slice(5).trim()
-      if (!data || data === '[DONE]') return
-      try { const text = String(providerText(JSON.parse(data))); if (text) { answer += text; chunks.push(text) } } catch { /* ignore keep-alive or malformed provider lines */ }
-    }
-    while (true) {
-      const next = await reader.read(); if (next.done) break
-      buffer += decoder.decode(next.value, { stream: true })
-      const lines = buffer.split(/\r?\n/); buffer = lines.pop() ?? ''
-      for (const line of lines) consume(line)
-    }
-    consume(buffer)
-  } else {
-    const payload = await response.json(); const text = String(providerText(payload))
-    if (text) { answer = text; chunks.push(text) }
-  }
-  return { answer, chunks }
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -65,10 +35,12 @@ Deno.serve(async (req) => {
   if (existingSubmission) return json({ error: 'LEVEL_LOCKED' }, 409)
   // Read the delay for every request so an admin change applies to the next
   // prompt without rebuilding or redeploying the browser application.
-  const { data: guardrail } = await client.from('guardrails').select('system_prompt,system_prompt_2,model_name,temperature,max_tokens,primary_endpoint,primary_api_key,timeout_seconds,secondary_endpoint,secondary_api_key,stream_delay_ms').eq('level_id', levelId).maybeSingle()
-  const { data: secret } = await client.from('team_secrets').select('target_secret').eq('user_id', authData.user.id).eq('level_id', levelId).maybeSingle()
+  const { data: guardrail, error: guardrailError } = await client.from('guardrails').select('system_prompt,system_prompt_2,model_name,temperature,max_tokens,primary_endpoint,primary_api_key,timeout_seconds,secondary_endpoint,secondary_api_key,stream_delay_ms').eq('level_id', levelId).maybeSingle()
+  const { data: secret, error: secretError } = await client.from('team_secrets').select('target_secret').eq('user_id', authData.user.id).eq('level_id', levelId).maybeSingle()
+  if (guardrailError || secretError) return json({ error: 'SETTINGS_LOOKUP_FAILED', message: 'Warden settings could not be loaded from the database.' }, 503)
   if (!guardrail || !secret?.target_secret) return json({ error: 'TARGET_NOT_CONFIGURED' }, 409)
-  const { data: history } = await client.from('chat_messages').select('role,content').eq('user_id', authData.user.id).eq('level_id', levelId).is('deleted_at', null).order('created_at', { ascending: true }).limit(40)
+  const { data: history, error: historyError } = await client.from('chat_messages').select('role,content').eq('user_id', authData.user.id).eq('level_id', levelId).is('deleted_at', null).order('created_at', { ascending: true }).limit(40)
+  if (historyError) return json({ error: 'HISTORY_LOOKUP_FAILED', message: 'Chat history could not be loaded from the database.' }, 503)
   const messages = [
     { role: 'system', content: guardrail.system_prompt.replaceAll('{{SECRET}}', secret.target_secret) },
     { role: 'system', content: guardrail.system_prompt_2.replaceAll('{{SECRET}}', secret.target_secret) },
@@ -82,41 +54,57 @@ Deno.serve(async (req) => {
   // The request keeps cycling until a configured provider returns a usable
   // answer. The four-slot cycle is primary twice, fallback twice, then repeat.
   const attempts = providerAttemptOrder(Boolean(providers.primary), Boolean(providers.fallback), 4)
+  if (attempts.length === 0) return json({ error: 'PROVIDER_NOT_CONFIGURED', message: 'The Warden is unavailable because no AI provider is configured.' }, 409)
+  let stopped = false
+  let activeRequest: AbortController | null = null
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  const stop = () => { stopped = true; activeRequest?.abort(); clearInterval(heartbeat) }
+  req.signal.addEventListener('abort', stop, { once: true })
   const stream = new ReadableStream({
     start(controller) {
-      const emit = (event: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
+      const emit = (event: unknown) => { if (!stopped) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)) }
+      heartbeat = setInterval(() => emit({ type: 'ping' }), 5000)
       void (async () => {
         let answer = ''
         let selectedSlot: ProviderSlot | null = null
-        let providerResult: { answer: string; chunks: string[] } | null = null
         let attemptCount = 0
-        while (!providerResult && attempts.length > 0) {
+        emit({ type: 'meta', stream_delay_ms: Math.max(10, Math.min(2000, Number(guardrail.stream_delay_ms) || 50)), fallback_used: false })
+        while (!answer && !stopped) {
           const slot = attempts[attemptCount % attempts.length]
           attemptCount += 1
           const provider = providers[slot]
           if (!provider) continue
-          const requestController = new AbortController(); const timeout = setTimeout(() => requestController.abort(), guardrail.timeout_seconds * 1000)
+          const requestController = new AbortController()
+          activeRequest = requestController
+          const timeout = setTimeout(() => requestController.abort(), guardrail.timeout_seconds * 1000)
+          let receivedText = false
           try {
             const response = await fetch(`${String(provider.endpoint).replace(/\/$/, '')}/chat/completions`, { method: 'POST', signal: requestController.signal, headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json', Authorization: `Bearer ${provider.key}` }, body: JSON.stringify({ model: guardrail.model_name, messages, temperature: guardrail.temperature, max_tokens: guardrail.max_tokens, stream: true }) })
-            if (response.ok) {
-              const result = await readProvider(response)
-              if (result.answer) { providerResult = result; selectedSlot = slot; break }
+            if (!response.ok) {
+              await response.body?.cancel().catch(() => undefined)
+              throw new ProviderFailure('HTTP_ERROR', response.status)
             }
-            await response.body?.cancel().catch(() => undefined)
-          } catch { /* try fallback */ } finally { clearTimeout(timeout) }
+            answer = await readProvider(response, (content) => { receivedText = true; emit({ type: 'chunk', content }) })
+            selectedSlot = slot
+          } catch (error) {
+            if (stopped) return
+            const reason = requestController.signal.aborted ? 'TIMEOUT' : error instanceof ProviderFailure ? error.reason : 'CONNECTION_ERROR'
+            const status = error instanceof ProviderFailure ? error.status : undefined
+            // Only safe failure categories are logged; never provider bodies or prompts.
+            console.warn(JSON.stringify({ event: 'provider_retry', provider: slot, attempt: attemptCount, reason, status }))
+            if (receivedText) emit({ type: 'reset' })
+            emit({ type: 'retry', provider: slot, attempt: attemptCount, reason, status })
+          } finally { clearTimeout(timeout); activeRequest = null }
+          if (!answer && !stopped) await new Promise((resolve) => setTimeout(resolve, 1000))
         }
-        if (!providerResult || !selectedSlot) {
-          const noProvider = attempts.length === 0
-          emit({ type: 'error', error: noProvider ? 'PROVIDER_NOT_CONFIGURED' : 'PROVIDER_UNAVAILABLE', message: noProvider ? 'The Warden is unavailable because no AI provider is configured.' : 'The Warden could not answer because the configured AI provider failed. This was a provider failure, not a prompt answer.', provider_failed: !noProvider })
-          controller.close(); return
-        }
-        answer = providerResult.answer
-        emit({ type: 'meta', stream_delay_ms: Math.max(10, Math.min(2000, Number(guardrail.stream_delay_ms) || 50)), fallback_used: selectedSlot === 'fallback', provider: selectedSlot })
-        for (const chunk of providerResult.chunks) emit({ type: 'chunk', content: chunk })
-        await client.from('chat_messages').insert([{ user_id: authData.user.id, level_id: levelId, role: 'user', content: prompt }, { user_id: authData.user.id, level_id: levelId, role: 'assistant', content: answer }])
-        emit({ type: 'done', fallback_used: selectedSlot === 'fallback', provider: selectedSlot }); controller.close()
-      })().catch(() => { emit({ type: 'error', error: 'PROVIDER_UNAVAILABLE', message: 'The Warden could not answer because the AI provider failed. This was a provider failure, not a prompt answer.', provider_failed: true }); controller.close() })
+        if (stopped) return
+        const { error: saveError } = await client.from('chat_messages').insert([{ user_id: authData.user.id, level_id: levelId, role: 'user', content: prompt }, { user_id: authData.user.id, level_id: levelId, role: 'assistant', content: answer }])
+        if (saveError) { emit({ type: 'error', error: 'CHAT_SAVE_FAILED', message: 'The AI answered, but the database could not save this conversation. The displayed answer is not saved.' }); return }
+        emit({ type: 'done', fallback_used: selectedSlot === 'fallback', provider: selectedSlot })
+      })().catch(() => { if (!stopped) emit({ type: 'error', error: 'GATEWAY_FAILED', message: 'The chat server failed while processing this request. This does not confirm an AI provider failure.' }) })
+        .finally(() => { clearInterval(heartbeat); req.signal.removeEventListener('abort', stop); stopped = true; try { controller.close() } catch { /* cancelled */ } })
     },
+    cancel() { stop(); req.signal.removeEventListener('abort', stop) },
   })
   return new Response(stream, { headers: streamHeaders })
 })

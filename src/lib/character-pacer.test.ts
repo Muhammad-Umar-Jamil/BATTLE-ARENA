@@ -2,6 +2,30 @@ import { describe, expect, it } from 'vitest'
 import { createCharacterPacer } from './character-pacer'
 
 describe('character pacer', () => {
+  it('discards old queued characters when a retry resets a pending timer', async () => {
+    let resume!: () => void
+    const emitted: string[] = []
+    const pacer = createCharacterPacer(40, (character) => emitted.push(character), () => new Promise<void>((resolve) => { resume = resolve }))
+    pacer.enqueue('AB')
+    pacer.reset()
+    pacer.enqueue('Z')
+    const finished = pacer.finish()
+    resume()
+    await finished
+    expect(emitted).toEqual(['A', 'Z'])
+  })
+
+  it('does not emit undefined when reset empties a sleeping queue', async () => {
+    let resume!: () => void
+    const emitted: string[] = []
+    const pacer = createCharacterPacer(40, (character) => emitted.push(character), () => new Promise<void>((resolve) => { resume = resolve }))
+    pacer.enqueue('AB')
+    pacer.reset()
+    const finished = pacer.finish()
+    resume()
+    await finished
+    expect(emitted).toEqual(['A'])
+  })
   it('emits queued characters in order and waits between characters', async () => {
     const emitted: string[] = []
     const waits: number[] = []
